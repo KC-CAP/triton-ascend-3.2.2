@@ -8,8 +8,6 @@
 #include "ascend/include/DynamicCVPipeline/ComputeBlockOptPass.h"
 #include "ascend/include/DynamicCVPipeline/Passes.h"
 #include "ascend/include/DynamicCVPipeline/RemoveAttributes.h"
-#include "ascend/include/DynamicCVPipeline/SeparateMemoryFromCompute/AddMultiBufferToGMLoadPass.h"
-#include "ascend/include/DynamicCVPipeline/SeparateMemoryFromCompute/AsyncLoadHoistingPass.h"
 #include "ascend/include/DynamicCVPipeline/SplitDataflow/RefineArgsBlockId.h"
 #include "ascend/include/DynamicCVPipeline/StandardizeOp.h"
 #include "ascend/include/TritonControlFlowOpt/Passes.h"
@@ -192,8 +190,6 @@ inline void registerTritonDialects(mlir::DialectRegistry &registry) {
   mlir::triton::registerPlanComputeBlockPasses();
   mlir::triton::registerOpClassifierPass();
   mlir::triton::registerRefineArgsBlockIdPasses();
-  mlir::triton::registerAsyncLoadHoistingPasses();
-  mlir::triton::registerAddMultiBufferToGMLoadPasses();
 
   registry.insert<
       mlir::triton::TritonDialect, mlir::cf::ControlFlowDialect,

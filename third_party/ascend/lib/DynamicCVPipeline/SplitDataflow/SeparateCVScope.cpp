@@ -20,12 +20,10 @@
  * THE SOFTWARE.
  */
 
-#include <optional>
+#include "ascend/include/DynamicCVPipeline/SplitDataflow/SeparateCVScope.h"
 
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Debug.h"
-
+#include "bishengir/Dialect/HIVM/IR/HIVM.h"
+#include "bishengir/Dialect/Scope/IR/Scope.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -36,11 +34,10 @@
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 
-#include "ascend/include/DynamicCVPipeline/Common/Utils.h"
-#include "ascend/include/DynamicCVPipeline/SplitDataflow/SeparateCVScope.h"
-
-#include "bishengir/Dialect/HIVM/IR/HIVM.h"
-#include "bishengir/Dialect/Scope/IR/Scope.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Debug.h"
+#include <optional>
 
 using namespace mlir;
 
@@ -551,7 +548,7 @@ static UseCheckResult checkConditionUse(OpOperand &use, Operation *owner,
   }
 
   unsigned idx = use.getOperandNumber();
-  if (conditionOp->getParentOp() != owner || idx == 0 || idx != slotIndex + 1) {
+  if (conditionOp->getParentOp() != owner || idx == 0 || idx - 1 != slotIndex) {
     Operation *parentOp = conditionOp->getParentOp();
     if (parentOp && !matchesScope(parentOp, scopeType)) {
       return UseCheckResult::Continue;
@@ -984,7 +981,7 @@ void mlir::triton::SeparateCVScopePass::runOnOperation() {
   }
 
   module.walk([](scope::ScopeOp scopeOp) {
-    scopeOp->setAttr(CVPipeline::kHIVMMatmulLimitedInCubeAttr,
+    scopeOp->setAttr("hivm.matmul_limited_in_cube",
                      UnitAttr::get(scopeOp->getContext()));
   });
 

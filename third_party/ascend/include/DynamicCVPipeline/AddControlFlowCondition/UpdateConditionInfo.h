@@ -34,7 +34,6 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include <optional>
 
 namespace mlir {
 namespace triton {
@@ -182,7 +181,7 @@ private:
                        SmallVector<SmallVector<Value>> ssbufferPtrs);
 
   // Compute pointers for VECTOR core SSBuffer
-  std::optional<DenseMap<int, Value>>
+  DenseMap<int, Value>
   computeVectorSSBufferPtrs(OpBuilder &builder, Location loc,
                             Operation *scopeOp,
                             SmallVector<int> crossCoreInputValues,

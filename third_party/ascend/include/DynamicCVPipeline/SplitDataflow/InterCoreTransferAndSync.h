@@ -122,7 +122,6 @@ private:
                                         SmallVector<int64_t> &expectedShape,
                                         bool isMatmulA, bool isMatmulB,
                                         bool isOnlyDepInMatmul);
-  bool matmulCIsEmpty(mlir::Value acc);
   void padMatmulInnerDim(OpBuilder &builder, Operation *matmulOp, Location loc,
                          int matmulIndex, int matmulOpBlockId);
   void extractMatmulResult(

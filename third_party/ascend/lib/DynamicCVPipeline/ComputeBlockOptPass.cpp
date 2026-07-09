@@ -48,9 +48,6 @@ void ComputeBlockOptPass::runOnOperation() {
   pm.addPass(createMergeVectorIfBlockPass());
   pm.addPass(createReorderOpsByBlockIdPass());
 
-  pm.addPass(createMergeCubeForBlockPass());
-  pm.addPass(createReorderOpsByBlockIdPass());
-
   pm.addPass(createUBUsageOptPass());
   pm.addPass(createReorderOpsByBlockIdPass());
 
@@ -77,7 +74,6 @@ void registerComputeBlockOptPasses() {
   registerPass(createUBUsageOptPass);
   registerPass(createUnifyAllocBlockPass);
   registerPass(createMergeVectorIfBlockPass);
-  registerPass(createMergeCubeForBlockPass);
   registerPass(createFixpipeOptPass);
 }
 
