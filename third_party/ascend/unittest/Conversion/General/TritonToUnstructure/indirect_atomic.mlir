@@ -8,7 +8,7 @@
 // CHECK: %[[MASK_FLAT:.*]] = tt.reshape %[[MASK_I8]] : tensor<4x4xi8> -> tensor<16xi8>
 // CHECK: %[[OLD_FLAT:.*]] = hivm.hir.custom {extra_attr = "operate=add"{{.*}}} "__builtin_indirect_atomic" ins(%arg1, %[[OFFSET_FLAT]], %[[VALUE_FLAT]], %[[MASK_FLAT]]
 // CHECK: %[[OLD:.*]] = tt.reshape %[[OLD_FLAT]] : tensor<16xi32> -> tensor<4x4xi32>
-// CHECK: ascend.indirect_store %arg2 : <i32>, %[[OFFSET_I64]] : tensor<4x4xi64>, %[[OLD]] : tensor<4x4xi32>,
+// CHECK: ascend.unstructured_store %arg2 : <i32>, %[[OFFSET_I64]] : tensor<4x4xi64>, %[[OLD]] : tensor<4x4xi32> unstructured_dims = []
 tt.func public @structured_disc_mask_atomic_add_2d(%arg0: !tt.ptr<i32> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<i32> {tt.divisibility = 16 : i32}, %arg2: !tt.ptr<i32> {tt.divisibility = 16 : i32}) attributes {noinline = false} {
 	%cst = arith.constant dense<16> : tensor<4x4xi32>
 	%cst_0 = arith.constant dense<2> : tensor<4x4xi32>

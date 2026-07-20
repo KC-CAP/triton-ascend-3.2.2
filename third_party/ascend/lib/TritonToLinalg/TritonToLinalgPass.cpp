@@ -95,6 +95,7 @@ using namespace triton;
 int nd2nzFlag = 0;
 bool compileOn91095Flag = false;
 bool existDotFlag = false;
+triton::ascend::CompileMode compileModeFlag = triton::ascend::CompileMode::Simd;
 
 // Convert structured custom ops after operand type converted,
 // for example tt.ptr converted to memref.
@@ -180,9 +181,10 @@ static bool isSIMTOp(Operation *op) {
     }
   }
   return isa<triton::ascend::IndexPutOp, triton::ascend::GatherOutToUbOp,
-             triton::ascend::ScatterUbToOutOp, triton::ascend::IndirectLoadOp,
-             triton::ascend::StrideLoadOp, triton::ascend::StrideStoreOp,
-             triton::ascend::IndirectStoreOp>(op);
+             triton::ascend::ScatterUbToOutOp,
+             triton::ascend::UnstructuredLoadOp,
+             triton::ascend::UnstructuredStoreOp,
+             triton::ascend::StrideLoadOp, triton::ascend::StrideStoreOp>(op);
 }
 
 TritonTypeConverter::TritonTypeConverter() {
@@ -720,10 +722,12 @@ void TritonToLinalgPass::populateTritonToLinalgConversionPatterns(
   patterns.add<TTOpConverters::DotScaledConverter>(patterns.getContext());
   patterns.add<TTOpConverters::PtrToIntConverter>(patterns.getContext());
 
-  patterns.add<TTOpConverters::IndirectLoadConverter>(patterns.getContext());
+  patterns.add<TTOpConverters::UnstructuredLoadConverter>(
+      patterns.getContext());
+  patterns.add<TTOpConverters::UnstructuredStoreConverter>(
+      patterns.getContext());
   patterns.add<TTOpConverters::StrideLoadConverter>(patterns.getContext());
   patterns.add<TTOpConverters::StrideStoreConverter>(patterns.getContext());
-  patterns.add<TTOpConverters::IndirectStoreConverter>(patterns.getContext());
   patterns.add<TTOpConverters::GatherOutToUbConverter>(patterns.getContext());
   patterns.add<TTOpConverters::ScatterUbToOutConverter>(patterns.getContext());
   patterns.add<TTOpConverters::IndexSelectSimdConverter>(patterns.getContext());
@@ -861,7 +865,8 @@ LogicalResult TritonToLinalgPass::processStridedLoadStoreRewriteOperations(
     ModuleOp moduleOp) {
   // The strided-axis rewrites below only apply in 950 SIMT mode. On other
   // targets we leave strided loads to the legacy strided DMA lowering.
-  if (!(compileOn91095Flag && forceSimtTemplateFlag)) {
+  if (!(compileOn91095Flag &&
+        compileModeFlag == triton::ascend::CompileMode::SimdSimtTemplate)) {
     return success();
   }
 
@@ -925,6 +930,7 @@ TritonToLinalgPass::processLegalStrideOperations(ModuleOp moduleOp) {
 
 void TritonToLinalgPass::runOnOperation() {
   compileOn91095Flag = this->compileOn91095;
+  compileModeFlag = triton::ascend::parseCompileMode(this->compileMode);
 
   auto moduleOp = getOperation();
 
@@ -943,9 +949,10 @@ void TritonToLinalgPass::runOnOperation() {
 
   // NOTE: existSIMTOp is intentionally computed AFTER
   // processStridedLoadStoreRewriteOperations below, because that step
-  // materializes triton::ascend::IndirectLoadOp/IndirectStoreOp (which
-  // isSIMTOp() counts). Walking here (before the rewrite) would miss them and
-  // mislabel the kernel parallel_mode as "simd" instead of "mix_simd_simt";
+  // materializes triton::ascend::UnstructuredLoadOp/UnstructuredStoreOp
+  // (which isSIMTOp() counts). Walking here (before the rewrite) would miss
+  // them and mislabel the kernel parallel_mode as "simd" instead of
+  // "mix_simd_simt";
   // then enable_simt would be false and the launch would not reserve
   // localMemorySize for the SIMT templates -> VEC UB out-of-bounds (error 341)
   // at runtime on mix-CV kernels.
@@ -963,19 +970,20 @@ void TritonToLinalgPass::runOnOperation() {
     signalPassFailure();
   }
 
-  // SIMT IndirectLoad fast-path rewrite (runs after ImplicitPermute so the
+  // SIMT strided-access fast-path rewrite (runs after ImplicitPermute so the
   // permuted access patterns have already been absorbed; this step only
-  // catches non-permuted last-axis stride > 1 loads).
+  // catches non-permuted last-axis stride > 1 accesses).
   if (failed(processStridedLoadStoreRewriteOperations(moduleOp))) {
     LLVM_DEBUG({
-      llvm::dbgs() << "Failed to process indirect-load rewrite operations\n";
+      llvm::dbgs() << "Failed to process strided-access rewrite operations\n";
     });
     signalPassFailure();
   }
 
-  // Detect SIMT ops AFTER the indirect-load rewrite so the freshly materialized
-  // IndirectLoadOp/IndirectStoreOp are counted (drives parallel_mode ->
-  // "mix_simd_simt" -> enable_simt -> launch reserves localMemorySize).
+  // Detect SIMT ops AFTER the strided-access rewrite so the freshly
+  // materialized UnstructuredLoadOp/UnstructuredStoreOp are counted (drives
+  // parallel_mode -> "mix_simd_simt" -> enable_simt -> launch reserves
+  // localMemorySize).
   moduleOp.walk([&](Operation *op) {
     if (isSIMTOp(op)) {
       existSIMTOp = true;
@@ -1327,12 +1335,14 @@ void TritonToLinalgPass::runOnOperation() {
   });
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> triton::createTritonToLinalgPass(
-    bool globalKernel, bool namedOps, bool enableNd2nzOnVector,
-    bool enableSelectAnalysis, bool compileOn91095) {
+std::unique_ptr<OperationPass<ModuleOp>>
+triton::createTritonToLinalgPass(bool globalKernel, bool namedOps,
+                                 bool enableNd2nzOnVector,
+                                 bool enableSelectAnalysis, bool compileOn91095,
+                                 const std::string &compileMode) {
   return std::make_unique<TritonToLinalgPass>(
       globalKernel, namedOps, enableNd2nzOnVector, enableSelectAnalysis,
-      compileOn91095);
+      compileOn91095, compileMode);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> triton::createTritonToLinalgPass() {

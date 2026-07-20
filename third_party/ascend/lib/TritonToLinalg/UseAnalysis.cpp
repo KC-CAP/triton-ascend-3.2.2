@@ -84,6 +84,15 @@ void triton::UseAnalysis::visitOperation(Operation *op,
           propagateUse(operands[2], UseType::MetaUse);
         }
       })
+      .Case<triton::ascend::UnstructuredLoadOp>([&](auto load) {
+        propagateUse(operands[0], UseType::MetaUse);
+        propagateUse(operands[1], UseType::DataUse);
+        unsigned nextOperand = 2;
+        if (load.getMask())
+          propagateUse(operands[nextOperand++], UseType::DataUse);
+        if (load.getOther())
+          propagateUse(operands[nextOperand], UseType::DataUse);
+      })
       .Case<triton::PrintOp>([&](auto print) {
         for (auto operand : operands)
           propagateUse(operand, UseType::DataUse);
@@ -100,14 +109,12 @@ void triton::UseAnalysis::visitOperation(Operation *op,
           propagateUse(operands[2], UseType::MetaUse);
         }
       })
-      .Case<triton::ascend::IndirectStoreOp>([&](auto store) {
+      .Case<triton::ascend::UnstructuredStoreOp>([&](auto store) {
         propagateUse(operands[0], UseType::MetaUse);
         propagateUse(operands[1], UseType::DataUse);
         propagateUse(operands[2], UseType::DataUse);
-        auto mask = store.getMask();
-        if (mask) {
+        if (store.getMask())
           propagateUse(operands[3], UseType::DataUse);
-        }
       })
       // Consider triton::AtomicRMWOp as store operation
       .Case<triton::AtomicRMWOp>([&](auto atomicOp) {
@@ -194,7 +201,9 @@ void setMixUseRecursively(Operation *rootOp, bool applyRoot = true) {
       },
       // StopFn
       [rootOp](Operation *curOp) {
-        return isa<triton::LoadOp>(curOp) && curOp != rootOp;
+        return (isa<triton::LoadOp>(curOp) ||
+                isa<triton::ascend::UnstructuredLoadOp>(curOp)) &&
+               curOp != rootOp;
       },
       // ActionFn
       [](OpBuilder &b, Operation *op) {
@@ -391,13 +400,13 @@ LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
                 metaUsers.insert(user);
               }
             })
-            .Case<triton::ascend::IndirectStoreOp>([&](auto indirectstore) {
-              auto src = indirectstore.getSrc();
-              // Only src is MetaUse (see visitOperation). offsets/value/mask
-              // are DataUse
-              if (result == src) {
+            .Case<triton::ascend::UnstructuredLoadOp>([&](auto load) {
+              if (result == load.getBase())
                 metaUsers.insert(user);
-              }
+            })
+            .Case<triton::ascend::UnstructuredStoreOp>([&](auto store) {
+              if (result == store.getBase())
+                metaUsers.insert(user);
             })
             .Case<triton::AtomicRMWOp>([&](auto atomicOp) {
               auto ptr = atomicOp.getPtr();
@@ -506,7 +515,8 @@ LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
             // so that they will be replaced instead of be erased without
             // conversion.
             return (isa<triton::LoadOp>(curOp) || isa<triton::StoreOp>(curOp) ||
-                    isa<triton::ascend::IndirectStoreOp>(curOp)) &&
+                    isa<triton::ascend::UnstructuredLoadOp>(curOp) ||
+                    isa<triton::ascend::UnstructuredStoreOp>(curOp)) &&
                    !isMetaUse(curOp);
           },
           /*actionFn*/

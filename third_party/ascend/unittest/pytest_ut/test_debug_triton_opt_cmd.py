@@ -110,6 +110,39 @@ def test_no_debug_print_when_debug_is_false(capsys):
     assert "[DEBUG] cmd list:" not in out
 
 
+def test_invalid_compile_mode_raises():
+    from triton.backends.ascend.compiler import NPUOptions
+
+    with pytest.raises(ValueError, match="Invalid compile_mode='invalid'"):
+        NPUOptions(compile_mode="invalid")
+
+
+def test_simd_simt_compile_mode_sets_mixed_parallel_mode():
+    from triton.backends.ascend.compiler import NPUOptions
+
+    options = NPUOptions(compile_mode="simd_simt", compile_on_910_95=True)
+
+    assert options.parallel_mode == "mix_simd_simt"
+    assert options.shared_mem_dynamic_size == 221184
+
+
+def test_simd_simt_template_compile_mode_is_accepted():
+    from triton.backends.ascend.compiler import NPUOptions
+
+    options = NPUOptions(compile_mode="simd_simt_template", compile_on_910_95=True)
+
+    assert options.compile_mode == "simd_simt_template"
+
+
+def test_simt_template_compile_mode_is_a_deprecated_alias():
+    from triton.backends.ascend.compiler import NPUOptions
+
+    with pytest.warns(DeprecationWarning, match="simd_simt_template"):
+        options = NPUOptions(compile_mode="simt_template", compile_on_910_95=True)
+
+    assert options.compile_mode == "simd_simt_template"
+
+
 def test_debug_print_uses_dump_dir_when_set(capsys, monkeypatch):
     """When TRITON_DUMP_DIR is set, debug output should show paths under that dir."""
     from triton.runtime.cache import _base32

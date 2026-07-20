@@ -1,5 +1,5 @@
 // RUN: triton-opt %s --triton-to-unstructure='compile-on-910-95=true force-simt-template=true' \
-// RUN:                --triton-to-linalg='compile-on-910-95=true' --split-input-file \
+// RUN:                --triton-to-linalg='compile-on-910-95=true compile-mode=simd_simt_template' --split-input-file \
 // RUN: | FileCheck %s
 
 // -----
@@ -676,8 +676,8 @@ module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
     %src_ptr = tt.addptr %src_splat, %range : tensor<128x!tt.ptr<i32>>, tensor<128xi32>
     %dst_splat = tt.splat %arg1 : !tt.ptr<i32> -> tensor<128x!tt.ptr<i32>>
     %dst_ptr = tt.addptr %dst_splat, %range : tensor<128x!tt.ptr<i32>>, tensor<128xi32>
-    %value = tt.load %src_ptr, %mask, %zero {route_discrete_mask_to_simt} : tensor<128x!tt.ptr<i32>>
-    tt.store %dst_ptr, %value, %mask {route_discrete_mask_to_simt} : tensor<128x!tt.ptr<i32>>
+    %value = tt.load %src_ptr, %mask, %zero {MixCompileDiscreteMask} : tensor<128x!tt.ptr<i32>>
+    tt.store %dst_ptr, %value, %mask {MixCompileDiscreteMask} : tensor<128x!tt.ptr<i32>>
     tt.return
   }
 }
@@ -696,9 +696,9 @@ module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
     %src_ptr = tt.addptr %src_splat, %range : tensor<128x!tt.ptr<i32>>, tensor<128xi32>
     %dst_splat = tt.splat %arg1 : !tt.ptr<i32> -> tensor<128x!tt.ptr<i32>>
     %dst_ptr = tt.addptr %dst_splat, %range : tensor<128x!tt.ptr<i32>>, tensor<128xi32>
-    tt.store %src_ptr, %one, %mask {route_discrete_mask_to_simt} : tensor<128x!tt.ptr<i32>>
-    %value = tt.load %src_ptr, %mask, %zero {route_discrete_mask_to_simt} : tensor<128x!tt.ptr<i32>>
-    tt.store %dst_ptr, %value, %mask {route_discrete_mask_to_simt} : tensor<128x!tt.ptr<i32>>
+    tt.store %src_ptr, %one, %mask {MixCompileDiscreteMask} : tensor<128x!tt.ptr<i32>>
+    %value = tt.load %src_ptr, %mask, %zero {MixCompileDiscreteMask} : tensor<128x!tt.ptr<i32>>
+    tt.store %dst_ptr, %value, %mask {MixCompileDiscreteMask} : tensor<128x!tt.ptr<i32>>
     tt.return
   }
 }
@@ -717,8 +717,8 @@ module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
     %src_ptr = tt.addptr %src_splat, %range : tensor<128x!tt.ptr<i32>>, tensor<128xi32>
     %dst_splat = tt.splat %arg0 : !tt.ptr<i32> -> tensor<128x!tt.ptr<i32>>
     %dst_ptr = tt.addptr %dst_splat, %range : tensor<128x!tt.ptr<i32>>, tensor<128xi32>
-    %value = tt.load %src_ptr, %mask, %zero {route_discrete_mask_to_simt} : tensor<128x!tt.ptr<i32>>
-    tt.store %dst_ptr, %value, %mask {route_discrete_mask_to_simt} : tensor<128x!tt.ptr<i32>>
+    %value = tt.load %src_ptr, %mask, %zero {MixCompileDiscreteMask} : tensor<128x!tt.ptr<i32>>
+    tt.store %dst_ptr, %value, %mask {MixCompileDiscreteMask} : tensor<128x!tt.ptr<i32>>
     tt.return
   }
 }
@@ -742,15 +742,15 @@ module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
     %dst_ptr = tt.addptr %dst_base, %range : tensor<16x!tt.ptr<i32>>, tensor<16xi32>
     scf.if %cond1 {
       %one = arith.constant dense<1> : tensor<16xi32>
-      tt.store %src_ptr, %one, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+      tt.store %src_ptr, %one, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
     }
     %value = scf.if %cond2 -> tensor<16xi32> {
-      %loaded = tt.load %src_ptr, %mask, %zero {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+      %loaded = tt.load %src_ptr, %mask, %zero {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
       scf.yield %loaded : tensor<16xi32>
     } else {
       scf.yield %zero : tensor<16xi32>
     }
-    tt.store %dst_ptr, %value, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+    tt.store %dst_ptr, %value, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
     tt.return
   }
 }
@@ -776,15 +776,15 @@ module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
     %dst_ptr = tt.addptr %dst_base, %range : tensor<16x!tt.ptr<i32>>, tensor<16xi32>
     scf.if %cond1 {
       %one = arith.constant dense<1> : tensor<16xi32>
-      tt.store %other_ptr, %one, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+      tt.store %other_ptr, %one, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
     }
     %value = scf.if %cond2 -> tensor<16xi32> {
-      %loaded = tt.load %src_ptr, %mask, %zero {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+      %loaded = tt.load %src_ptr, %mask, %zero {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
       scf.yield %loaded : tensor<16xi32>
     } else {
       scf.yield %zero : tensor<16xi32>
     }
-    tt.store %dst_ptr, %value, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+    tt.store %dst_ptr, %value, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
     tt.return
   }
 }
@@ -807,11 +807,11 @@ module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
     %dst_ptr = tt.addptr %dst_base, %range : tensor<16x!tt.ptr<i32>>, tensor<16xi32>
     %mask = arith.cmpi sge, %range, %zero : tensor<16xi32>
     scf.for %i = %c0_i32 to %trip step %c1_i32 : i32 {
-      tt.store %src_ptr, %one, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+      tt.store %src_ptr, %one, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
     }
     scf.for %j = %c0_i32 to %trip step %c1_i32 : i32 {
-      %loaded = tt.load %src_ptr, %mask, %zero {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
-      tt.store %dst_ptr, %loaded, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+      %loaded = tt.load %src_ptr, %mask, %zero {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
+      tt.store %dst_ptr, %loaded, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
     }
     tt.return
   }
@@ -837,9 +837,9 @@ module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
     %mask = arith.cmpi sge, %range, %zero : tensor<16xi32>
     scf.for %i = %c0_i32 to %outer step %c1_i32 : i32 {
       scf.for %j = %c0_i32 to %inner step %c1_i32 : i32 {
-        %loaded = tt.load %src_ptr, %mask, %zero {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
-        tt.store %src_ptr, %one, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
-        tt.store %dst_ptr, %loaded, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<i32>>
+        %loaded = tt.load %src_ptr, %mask, %zero {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
+        tt.store %src_ptr, %one, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
+        tt.store %dst_ptr, %loaded, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<i32>>
       }
     }
     tt.return
@@ -869,12 +869,12 @@ module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
     %dst_base = tt.splat %arg2 : !tt.ptr<f32> -> tensor<16x!tt.ptr<f32>>
     %dst_ptr = tt.addptr %dst_base, %range : tensor<16x!tt.ptr<f32>>, tensor<16xi32>
     scf.for %i = %c0_i32 to %trip step %c1_i32 : i32 {
-      %local = tt.load %gm_ptr, %mask, %zero_f {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<f32>>
+      %local = tt.load %gm_ptr, %mask, %zero_f {MixCompileDiscreteMask} : tensor<16x!tt.ptr<f32>>
       tt.assert %mask, "mask must be true" : tensor<16xi1>
-      %indirect = tt.load %src_ptr, %mask, %zero_f {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<f32>>
+      %indirect = tt.load %src_ptr, %mask, %zero_f {MixCompileDiscreteMask} : tensor<16x!tt.ptr<f32>>
       %sum = arith.addf %local, %indirect : tensor<16xf32>
-      tt.store %gm_ptr, %sum, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<f32>>
-      tt.store %dst_ptr, %indirect, %mask {route_discrete_mask_to_simt} : tensor<16x!tt.ptr<f32>>
+      tt.store %gm_ptr, %sum, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<f32>>
+      tt.store %dst_ptr, %indirect, %mask {MixCompileDiscreteMask} : tensor<16x!tt.ptr<f32>>
     }
     tt.return
   }

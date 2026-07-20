@@ -42,10 +42,56 @@
 #include <string>
 
 namespace mlir {
+namespace triton {
+namespace ascend {
+
+enum class CompileMode {
+  Simd,
+  SimdSimt,
+  SimdSimtTemplate,
+  SimtOnly,
+};
+
+inline CompileMode parseCompileMode(llvm::StringRef mode) {
+  return llvm::StringSwitch<CompileMode>(mode)
+      .Case("simd", CompileMode::Simd)
+      .Case("simd_simt", CompileMode::SimdSimt)
+      .Case("simd_simt_template", CompileMode::SimdSimtTemplate)
+      .Case("simt_template", CompileMode::SimdSimtTemplate)
+      .Case("unstructured_in_simt", CompileMode::SimdSimtTemplate)
+      .Case("simt_only", CompileMode::SimtOnly)
+      .Default(CompileMode::Simd);
+}
+
+inline CompileMode resolveCompileMode(llvm::StringRef mode,
+                                      bool forceSimtTemplate) {
+  return forceSimtTemplate ? CompileMode::SimdSimtTemplate
+                           : parseCompileMode(mode);
+}
+
+inline bool isMixCompileMode(CompileMode mode) {
+  return mode == CompileMode::SimdSimt || mode == CompileMode::SimdSimtTemplate;
+}
+
+inline bool hasScopeVecMode(Operation *op, llvm::StringRef mode) {
+  for (Operation *parent = op->getParentOp(); parent;
+       parent = parent->getParentOp()) {
+    if (auto vecModeAttr = parent->getAttrOfType<StringAttr>("vec_mode")) {
+      if (vecModeAttr.getValue() == mode)
+        return true;
+    }
+  }
+  return false;
+}
+
+} // namespace ascend
+} // namespace triton
+
 namespace ConverterUtils {
 
 const std::string GeneratedByMakeTensorPtrTAG = "GeneratedByMakeTensorPtr";
 const std::string discreteMaskAttrName = "DiscreteMask";
+const std::string mixCompileDiscreteMaskAttrName = "MixCompileDiscreteMask";
 const std::string discreteAttrName = "DiscreteMemAccess";
 const std::string continuousAttrName = "ContinuousMemAccess";
 const std::string customSrcPtrIndexAttrName = "SrcPtrIndex";

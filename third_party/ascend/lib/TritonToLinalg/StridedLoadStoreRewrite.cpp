@@ -49,8 +49,8 @@ using namespace triton;
 
 namespace {
 
-// V1 fast-path supports up to 5D tensors, mirroring
-// UnstructureConversionPass::tryRewriteIndirectFastPath.
+// The SIMT template ABI supports up to 5D tensors, mirroring the limit in
+// UnstructureConversionPass.
 constexpr size_t kFastPathRankLimit = 5;
 
 // Returns true iff `v` is a static integer constant with |v| > 1.
@@ -634,7 +634,17 @@ static Value buildBoundaryMask(Location loc, PatternRewriter &rewriter,
   return combined;
 }
 
-// Build the padding "other" tensor for tt.indirect_load. Honours
+static DenseI64ArrayAttr
+getAllUnstructuredDims(RankedTensorType tensorType,
+                       PatternRewriter &rewriter) {
+  SmallVector<int64_t> dimensions;
+  dimensions.reserve(tensorType.getRank());
+  for (int64_t dimension = 0; dimension < tensorType.getRank(); ++dimension)
+    dimensions.push_back(dimension);
+  return rewriter.getDenseI64ArrayAttr(dimensions);
+}
+
+// Build the padding "other" tensor for ascend.unstructured_load. Honours
 // PaddingOption::PAD_NAN for float element types; otherwise (including
 // PAD_ZERO or unspecified) returns a zero-splat tensor of `resultType`.
 // Returns null if PAD_NAN is requested but the element type is not float
@@ -784,21 +794,25 @@ static LogicalResult tryRewriteAddPtrLoad(triton::LoadOp op,
   offsetTensor =
       addScalarOffsetToTensor(offsetTensor, scalarOffset, loc, rewriter);
 
-  auto indirectLoad = rewriter.create<triton::ascend::IndirectLoadOp>(
-      loc, resultType, src, offsetTensor, op.getMask(), op.getOther(),
-      ConverterUtils::requiresVolatileIndirectLoad(op.getPtr(), op));
-  indirectLoad->setAttr(RewrittenByStridedLoadStoreRewriteTAG,
-                        UnitAttr::get(rewriter.getContext()));
+  auto unstructuredLoad =
+      rewriter.create<triton::ascend::UnstructuredLoadOp>(
+          loc, resultType, src, offsetTensor,
+          getAllUnstructuredDims(resultType, rewriter), op.getMask(),
+          op.getOther(), op.getCacheAttr(), op.getEvictAttr(),
+          rewriter.getBoolAttr(
+              ConverterUtils::requiresVolatileIndirectLoad(op.getPtr(), op)));
+  unstructuredLoad->setAttr(RewrittenByStridedLoadStoreRewriteTAG,
+                            UnitAttr::get(rewriter.getContext()));
 
   LLVM_DEBUG({
     llvm::dbgs() << "----------------------------------------------\n";
     llvm::dbgs() << "StridedLoadStoreRewrite [AddPtr]: tt.load -> "
-                    "tt.indirect_load\n";
+                    "ascend.unstructured_load\n";
     llvm::dbgs() << "  last_stride = " << lastStride << "\n";
-    llvm::dbgs() << indirectLoad << "\n";
+    llvm::dbgs() << unstructuredLoad << "\n";
     llvm::dbgs() << "----------------------------------------------\n";
   });
-  rewriter.replaceOp(op, indirectLoad.getResult());
+  rewriter.replaceOp(op, unstructuredLoad.getResult());
   return success();
 }
 
@@ -996,24 +1010,28 @@ static LogicalResult tryRewriteBlockPtrLoad(triton::LoadOp op,
     }
   }
 
-  // ---- Emit tt.indirect_load ----
-  auto indirectLoad = rewriter.create<triton::ascend::IndirectLoadOp>(
-      loc, resultType, src, offsetTensor, mask, other,
-      ConverterUtils::requiresVolatileIndirectLoad(op.getPtr(), op));
-  indirectLoad->setAttr(RewrittenByStridedLoadStoreRewriteTAG,
-                        UnitAttr::get(rewriter.getContext()));
+  // ---- Emit ascend.unstructured_load ----
+  auto unstructuredLoad =
+      rewriter.create<triton::ascend::UnstructuredLoadOp>(
+          loc, resultType, src, offsetTensor,
+          getAllUnstructuredDims(resultType, rewriter), mask, other,
+          op.getCacheAttr(), op.getEvictAttr(),
+          rewriter.getBoolAttr(
+              ConverterUtils::requiresVolatileIndirectLoad(op.getPtr(), op)));
+  unstructuredLoad->setAttr(RewrittenByStridedLoadStoreRewriteTAG,
+                            UnitAttr::get(rewriter.getContext()));
 
   LLVM_DEBUG({
     llvm::dbgs() << "----------------------------------------------\n";
     llvm::dbgs() << "StridedLoadStoreRewrite [BlockPtr"
                  << (advance ? "+Advance" : "")
                  << (boundaryCheck.empty() ? "" : "+Boundary")
-                 << "]: tt.load -> tt.indirect_load\n";
+                 << "]: tt.load -> ascend.unstructured_load\n";
     llvm::dbgs() << "  last_stride = " << lastStride << "\n";
-    llvm::dbgs() << indirectLoad << "\n";
+    llvm::dbgs() << unstructuredLoad << "\n";
     llvm::dbgs() << "----------------------------------------------\n";
   });
-  rewriter.replaceOp(op, indirectLoad.getResult());
+  rewriter.replaceOp(op, unstructuredLoad.getResult());
   return success();
 }
 
@@ -1132,17 +1150,20 @@ static LogicalResult tryRewriteAddPtrStore(triton::StoreOp op,
   offsetTensor =
       addScalarOffsetToTensor(offsetTensor, scalarOffset, loc, rewriter);
 
-  auto indirectStore = rewriter.create<triton::ascend::IndirectStoreOp>(
-      loc, src, offsetTensor, op.getValue(), op.getMask());
-  indirectStore->setAttr(RewrittenByStridedLoadStoreRewriteTAG,
-                         UnitAttr::get(rewriter.getContext()));
+  auto unstructuredStore =
+      rewriter.create<triton::ascend::UnstructuredStoreOp>(
+          loc, src, offsetTensor, op.getValue(),
+          getAllUnstructuredDims(valueType, rewriter), op.getMask(),
+          op.getCacheAttr(), op.getEvictAttr());
+  unstructuredStore->setAttr(RewrittenByStridedLoadStoreRewriteTAG,
+                             UnitAttr::get(rewriter.getContext()));
 
   LLVM_DEBUG({
     llvm::dbgs() << "----------------------------------------------\n";
     llvm::dbgs() << "StridedLoadStoreRewrite [AddPtr/Store]: tt.store -> "
-                    "tt.indirect_store\n";
+                    "ascend.unstructured_store\n";
     llvm::dbgs() << "  last_stride = " << lastStride << "\n";
-    llvm::dbgs() << indirectStore << "\n";
+    llvm::dbgs() << unstructuredStore << "\n";
     llvm::dbgs() << "----------------------------------------------\n";
   });
   rewriter.eraseOp(op);
@@ -1303,19 +1324,22 @@ static LogicalResult tryRewriteBlockPtrStore(triton::StoreOp op,
                 : boundaryMask;
   }
 
-  auto indirectStore = rewriter.create<triton::ascend::IndirectStoreOp>(
-      loc, src, offsetTensor, op.getValue(), mask);
-  indirectStore->setAttr(RewrittenByStridedLoadStoreRewriteTAG,
-                         UnitAttr::get(rewriter.getContext()));
+  auto unstructuredStore =
+      rewriter.create<triton::ascend::UnstructuredStoreOp>(
+          loc, src, offsetTensor, op.getValue(),
+          getAllUnstructuredDims(valueType, rewriter), mask,
+          op.getCacheAttr(), op.getEvictAttr());
+  unstructuredStore->setAttr(RewrittenByStridedLoadStoreRewriteTAG,
+                             UnitAttr::get(rewriter.getContext()));
 
   LLVM_DEBUG({
     llvm::dbgs() << "----------------------------------------------\n";
     llvm::dbgs() << "StridedLoadStoreRewrite [BlockPtr"
                  << (advance ? "+Advance" : "")
                  << (boundaryCheck.empty() ? "" : "+Boundary")
-                 << "/Store]: tt.store -> tt.indirect_store\n";
+                 << "/Store]: tt.store -> ascend.unstructured_store\n";
     llvm::dbgs() << "  last_stride = " << lastStride << "\n";
-    llvm::dbgs() << indirectStore << "\n";
+    llvm::dbgs() << unstructuredStore << "\n";
     llvm::dbgs() << "----------------------------------------------\n";
   });
   rewriter.eraseOp(op);

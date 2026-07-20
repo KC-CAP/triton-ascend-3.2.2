@@ -14,7 +14,10 @@ def TritonToUnstructure : Pass<"triton-to-unstructure", "mlir::ModuleOp"> {
             "compile on 910_95">,
         Option<"forceSimtTemplate", "force-simt-template",
             "bool", /*default*/"false",
-            "force to use simt template">
+            "Deprecated alias for compile-mode=simd_simt_template">,
+        Option<"compileMode", "compile-mode",
+            "std::string", /*default*/"\"simd\"",
+            "Compilation mode: simd, simd_simt, simd_simt_template">
     ];
 }
 

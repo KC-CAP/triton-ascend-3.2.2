@@ -1,7 +1,7 @@
 // RUN: triton-opt %s '--triton-to-unstructure=compile-on-910-95=True force-simt-template=True' | FileCheck %s
 
 // CHECK-LABEL: tt.func @triton_indirect_load
-// CHECK: ascend.indirect_load {{.*}} -> tensor<1024xi32>
+// CHECK: ascend.unstructured_load %{{.*}} : <i32>, %{{.*}} : tensor<1024xi64> unstructured_dims = []
 tt.func @triton_indirect_load(%arg0: !tt.ptr<i32>, %arg1: !tt.ptr<i32>) {
   %cst = arith.constant dense<0> : tensor<1024xi32>
   %cst_0 = arith.constant dense<200> : tensor<1024xi32>
@@ -14,13 +14,13 @@ tt.func @triton_indirect_load(%arg0: !tt.ptr<i32>, %arg1: !tt.ptr<i32>) {
   %5 = tt.addptr %4, %0 : tensor<1024x!tt.ptr<i32>>, tensor<1024xi32>
   %6 = tt.splat %arg1 : !tt.ptr<i32> -> tensor<1024x!tt.ptr<i32>>
   %7 = tt.addptr %6, %0 : tensor<1024x!tt.ptr<i32>>, tensor<1024xi32>
-  %8 = tt.load %5, %3, %cst {route_discrete_mask_to_simt} : tensor<1024x!tt.ptr<i32>>
+  %8 = tt.load %5, %3, %cst {MixCompileDiscreteMask} : tensor<1024x!tt.ptr<i32>>
   tt.store %7, %8 : tensor<1024x!tt.ptr<i32>>
   tt.return
 }
 
 // CHECK-LABEL: tt.func @triton_indirect_store
-// CHECK: ascend.indirect_store {{.*}}
+// CHECK: ascend.unstructured_store {{.*}} unstructured_dims = []
 tt.func @triton_indirect_store(%arg0: !tt.ptr<i32>, %arg1: !tt.ptr<i32>) {
   %cst_0 = arith.constant dense<200> : tensor<1024xi32>
   %cst_1 = arith.constant dense<400> : tensor<1024xi32>
@@ -33,13 +33,13 @@ tt.func @triton_indirect_store(%arg0: !tt.ptr<i32>, %arg1: !tt.ptr<i32>) {
   %6 = tt.splat %arg1 : !tt.ptr<i32> -> tensor<1024x!tt.ptr<i32>>
   %7 = tt.addptr %6, %0 : tensor<1024x!tt.ptr<i32>>, tensor<1024xi32>
   %8 = tt.load %5 : tensor<1024x!tt.ptr<i32>>
-  tt.store %7, %8, %3 {route_discrete_mask_to_simt} : tensor<1024x!tt.ptr<i32>>
+  tt.store %7, %8, %3 {MixCompileDiscreteMask} : tensor<1024x!tt.ptr<i32>>
   tt.return
 }
 
 // CHECK-LABEL: tt.func @discrete_highrank_and_structured_lowrank_loadstore_2d
-// CHECK: ascend.indirect_load {{.*}} -> tensor<2x16xbf16>
-// CHECK: ascend.indirect_store {{.*}}
+// CHECK: ascend.unstructured_load %{{.*}} : <bf16>, %{{.*}} : tensor<2x16xi64> unstructured_dims = [0]
+// CHECK: ascend.unstructured_store {{.*}} unstructured_dims = [0]
 tt.func @discrete_highrank_and_structured_lowrank_loadstore_2d(%arg0: !tt.ptr<bf16> {tt.divisibility = 16 : i32}) attributes {noinline = false} {
   %cst = arith.constant dense<2.000000e+00> : tensor<2x16xbf16>
   %cst_0 = arith.constant dense<16> : tensor<2x1xi32>
@@ -64,8 +64,8 @@ tt.func @discrete_highrank_and_structured_lowrank_loadstore_2d(%arg0: !tt.ptr<bf
 }
 
 // CHECK-LABEL: tt.func @discrete_highrank_and_structured_lowrank_loadstore_3d
-// CHECK: ascend.indirect_load {{.*}} -> tensor<2x2x8xbf16>
-// CHECK: ascend.indirect_store {{.*}}
+// CHECK: ascend.unstructured_load %{{.*}} : <bf16>, %{{.*}} : tensor<2x2x8xi64> unstructured_dims = [0]
+// CHECK: ascend.unstructured_store {{.*}} unstructured_dims = [0]
 tt.func @discrete_highrank_and_structured_lowrank_loadstore_3d(%arg0: !tt.ptr<bf16> {tt.divisibility = 16 : i32}) attributes {noinline = false} {
   %cst = arith.constant dense<3.000000e+00> : tensor<2x2x8xbf16>
   %cst_0 = arith.constant dense<8> : tensor<2x2x1xi32>
