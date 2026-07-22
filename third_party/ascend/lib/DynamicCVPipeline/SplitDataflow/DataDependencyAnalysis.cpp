@@ -539,13 +539,34 @@ void DataDependencyAnalysisPass::analyzeExternalOutputs(DataDependencyInfo &info
             for (mlir::Operation *user : output.getUsers()) {
                 if (!isa<linalg::TransposeOp>(user)) {
                     isAllTranspoesd = false;
-                    continue;
+                    break;
                 }
                 for (mlir::Operation *transposeOpUser : user->getUsers()) {
-                    if (getSsbufferCoreType(transposeOpUser) != ssbufferCoreTypeVectorAttr) {
-                        isAllTranspoesd = false;
-                        continue;
-                    }
+                  if (getSsbufferCoreType(transposeOpUser) != ssbufferCoreTypeVectorAttr) {
+                    isAllTranspoesd = false;
+                    break;
+                  }
+                }
+                if (!isAllTranspoesd) {
+                    break;
+                }
+                // check if the two dimensions of the transposed value are equal)
+                if (user->getNumResults() == 0) {
+                    isAllTranspoesd = false;
+                    break;
+                }
+                auto transposedValue = user->getResults()[0];
+                auto transposedType = dyn_cast<ShapedType>(transposedValue.getType());
+                if (!transposedType || transposedType.getRank() != 2) {
+                    isAllTranspoesd = false;
+                    break;
+                }
+                auto transposedShape = transposedType.getShape();
+                if (transposedShape[0] != transposedShape[1]) {
+                    LOG_DEBUG("[INFO] fixpipe transposed value");
+                    CVPipeline::setFallbackAttr(module);
+                    signalPassFailure();
+                    break;
                 }
             }
             if (isAllTranspoesd) {
