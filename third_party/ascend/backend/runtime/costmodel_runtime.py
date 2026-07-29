@@ -114,13 +114,22 @@ def run_costmodel(ttir_or_path, extra_args=None, dump_ir_on_error=False):
     if "-allow-unregistered-dialect" not in args:
         args.append("-allow-unregistered-dialect")
 
-    from triton._C.libtriton import ascend as ascend_capi
-
     if os.path.exists(str(ttir_or_path)):
         with open(str(ttir_or_path), "r", encoding="utf-8") as f:
             mlir_text = f.read()
     else:
         mlir_text = ttir_or_path
+
+    # The release/3.2.2 in-process bridge only accepts hardware-config and
+    # arg-bindings. TileMix/Multibuffer compile-params are implemented by
+    # tritonsim-opt; sending them to the bridge both drops the feature model
+    # and makes the bridge parse the suffix as part of the hardware path.
+    # Route feature-bearing requests to the external model instead of silently
+    # producing a base-only score.
+    if any("compile-params=" in arg for arg in args):
+        return _run_costmodel_subprocess(mlir_text, args, dump_ir_on_error)
+
+    from triton._C.libtriton import ascend as ascend_capi
 
     bridge = getattr(ascend_capi, "run_costmodel_inproc", None)
     if not callable(bridge):
