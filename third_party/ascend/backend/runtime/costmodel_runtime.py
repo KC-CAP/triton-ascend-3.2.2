@@ -33,6 +33,19 @@ def _costmodel_cache_namespace() -> str:
 
 _COSTMODEL_MEM_CACHE: Dict[str, float] = {}
 _COSTMODEL_COMPILE_PARAM_KEYS = (
+    "enable_dynamic_cv_pipeline",
+    "compile_on_910_95",
+    "intra_cache_num",
+    "inter_cache_num",
+    "load_cache_num",
+    "enable_buffer_insert_optimization",
+    "enable_ub_refine_opt",
+    "enable_cube_block_merge",
+    "multibuffer",
+    "num_stages",
+    "limit_auto_multi_buffer_only_for_local_buffer",
+    "limit_auto_multi_buffer_of_local_buffer",
+    "limit_auto_multi_buffer_buffer",
     "set_workspace_multibuffer",
     "tile_mix_vector_loop",
     "tile_mix_cube_loop",
@@ -47,7 +60,7 @@ _COSTMODEL_COMPILE_PARAM_KEYS = (
     "tile_mix_sync_ops_before",
     "tile_mix_sync_ops_after",
 )
-_COSTMODEL_CACHE_METRIC_VERSION = "scheduled_cycles_v15_ttir_finite_multibuffer_tail"
+_COSTMODEL_CACHE_METRIC_VERSION = "scheduled_cycles_v16_dynamic_cv_exclusive_multibuffer"
 
 
 def candidate_tritonsim_opts() -> List[Path]:
