@@ -26,9 +26,11 @@ class CompilerCostmodelContractTest(unittest.TestCase):
         ascend_backend_mod = types.ModuleType("triton.backends.ascend")
         ascend_backend_mod._apply_ascend_patch = lambda: None
         libtriton_mod = types.ModuleType("triton._C.libtriton")
+        libtriton_ascend_mod = types.ModuleType("triton._C.libtriton.ascend")
+        libtriton_ascend_mod.ir = Dummy()
         libtriton_mod.ir = Dummy()
         libtriton_mod.passes = Dummy()
-        libtriton_mod.ascend = Dummy()
+        libtriton_mod.ascend = libtriton_ascend_mod
         libtriton_mod.buffer_ir = Dummy()
 
         utils_mod = types.ModuleType("triton.backends.ascend.utils")
@@ -52,6 +54,8 @@ class CompilerCostmodelContractTest(unittest.TestCase):
                 "_is_auto_map_parallel_blocks_enabled",
                 "_get_auto_blockify_blacklist_reasons",
                 "_warn_auto_blockify_disabled",
+                "_remove_deprecated_npu_options",
+                "_warn_deprecated_ascend_env_vars",
                 "downgrade_llir",
                 "force_disable_ffts",
                 "get_cann_version_file_hash",
@@ -60,11 +64,20 @@ class CompilerCostmodelContractTest(unittest.TestCase):
         utils_mod._get_auto_blockify_blacklist_reasons = lambda *args, **kwargs: []
         utils_mod._is_auto_map_parallel_blocks_enabled = lambda *args, **kwargs: False
         utils_mod._warn_auto_blockify_disabled = lambda *args, **kwargs: None
+        utils_mod._remove_deprecated_npu_options = (
+            lambda opts, *args, **kwargs: dict(opts)
+        )
+        utils_mod._warn_deprecated_ascend_env_vars = lambda: None
         utils_mod.get_cann_version_file_hash = lambda *args, **kwargs: ""
         utils_mod.graph_ub_budget_bytes_for_arch = lambda *args, **kwargs: 0
 
         driver_mod = types.ModuleType("triton.backends.ascend.driver")
         driver_mod.NPUUtils = Dummy
+
+        debug_line_rewriter_mod = types.ModuleType(
+            "triton.backends.ascend.debug_line_rewriter"
+        )
+        debug_line_rewriter_mod.rewrite_debug_line = lambda value: value
 
         compiler_base_mod = types.ModuleType("triton.backends.compiler")
 
@@ -108,16 +121,20 @@ class CompilerCostmodelContractTest(unittest.TestCase):
             "triton": triton_mod,
             "triton._C": triton_c_mod,
             "triton._C.libtriton": libtriton_mod,
+            "triton._C.libtriton.ascend": libtriton_ascend_mod,
             "triton.backends.ascend": ascend_backend_mod,
             "triton.backends.ascend.utils": utils_mod,
             "triton.backends.ascend.driver": driver_mod,
+            "triton.backends.ascend.debug_line_rewriter": debug_line_rewriter_mod,
             "triton.backends.compiler": compiler_base_mod,
             "triton.runtime": runtime_mod,
             "triton.runtime.cache": cache_mod,
         })
 
         module_path = Path(__file__).resolve().parents[2] / "backend" / "compiler.py"
-        spec = importlib.util.spec_from_file_location("ascend_compiler_under_test", module_path)
+        spec = importlib.util.spec_from_file_location(
+            "triton.backends.ascend.compiler", module_path
+        )
         module = importlib.util.module_from_spec(spec)
         assert spec and spec.loader
         spec.loader.exec_module(module)
@@ -134,6 +151,35 @@ class CompilerCostmodelContractTest(unittest.TestCase):
         opt_costmodel = backend.parse_options({"enable_costmodel_backend": True})
         self.assertTrue(opt_costmodel.enable_costmodel_backend)
         self.assertFalse(opt_costmodel.use_bytecode)
+
+    def test_dynamic_cv_compiler_final_status_is_exported(self):
+        cmplr, _dump_mgr, _GPUTarget = self._load_compiler_module()
+
+        metadata = {"enable_dynamic_cv_pipeline": True}
+        cmplr._get_then_remove_rc = lambda _mod, _name: -1
+        cmplr._adjust_metadata_by_module_result(
+            object(), metadata, types.SimpleNamespace(debug=False),
+            enable_mixed_cv=False,
+            disable_auto_inject_block_sync=False,
+            set_workspace_multibuffer=2,
+        )
+        self.assertTrue(metadata["dynamic_cv_applied"])
+        self.assertEqual(metadata["dynamic_cv_skip_reason"], "none")
+        self.assertEqual(metadata["dynamic_cv_status_source"], "compiler_final")
+
+        metadata = {"enable_dynamic_cv_pipeline": True}
+        cmplr._get_then_remove_rc = lambda _mod, _name: 2
+        cmplr._adjust_metadata_by_module_result(
+            object(), metadata, types.SimpleNamespace(debug=False),
+            enable_mixed_cv=False,
+            disable_auto_inject_block_sync=False,
+            set_workspace_multibuffer=2,
+        )
+        self.assertFalse(metadata["dynamic_cv_applied"])
+        self.assertEqual(
+            metadata["dynamic_cv_skip_reason"], "compiler_ignored"
+        )
+        self.assertFalse(metadata["enable_dynamic_cv_pipeline"])
 
 
 if __name__ == "__main__":
