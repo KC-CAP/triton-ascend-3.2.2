@@ -63,6 +63,15 @@ _COSTMODEL_COMPILE_PARAM_KEYS = (
     "tile_mix_sync_ops_before",
     "tile_mix_sync_ops_after",
 )
+
+_COSTMODEL_COMPILE_PARAM_ALIASES = {
+    # TA main-dev names these options after the Dynamic-CV buffer slots while
+    # the current vTriton payload contract still uses the historical cache
+    # names.  Keep that wire contract stable at this boundary.
+    "buf_slot_num_of_veccore": "intra_cache_num",
+    "buf_slot_num_of_crosscore": "inter_cache_num",
+    "buf_slot_num_of_gm": "load_cache_num",
+}
 _COSTMODEL_CACHE_METRIC_VERSION = "scheduled_cycles_v17_dynamic_cv_segment_dag_signed_delta"
 
 
@@ -73,12 +82,10 @@ def candidate_tritonsim_opts() -> List[Path]:
         candidates.append(Path(env_path))
 
     repo_root = Path(__file__).resolve().parents[4]
-    candidates.extend(
-        [
-            repo_root / "third_party" / "vTriton" / "build" / "bin" / "tritonsim-opt",
-            repo_root / "third_party" / "vTriton" / "build" / "tritonsim" / "bin" / "tritonsim-opt",
-        ]
-    )
+    candidates.extend([
+        repo_root / "third_party" / "vTriton" / "build" / "bin" / "tritonsim-opt",
+        repo_root / "third_party" / "vTriton" / "build" / "tritonsim" / "bin" / "tritonsim-opt",
+    ])
     machine = platform.machine().lower()
     preferred = "build_arm64" if machine in {"aarch64", "arm64"} else "build_x86"
     candidates.append(repo_root / "third_party" / "vTriton" / preferred / "tritonsim" / "bin" / "tritonsim-opt")
@@ -183,9 +190,7 @@ def make_costmodel_cache_key(ttir: str, extra_args: Optional[List[str]]) -> str:
     if extra_args:
         h.update(" ".join(extra_args).encode("utf-8"))
     h.update(b"|")
-    dynamic_cv_mode = os.environ.get(
-        "ASCEND_COSTMODEL_DYNAMIC_CV_SEGMENT_DAG_MODEL", "0"
-    ).strip().lower()
+    dynamic_cv_mode = os.environ.get("ASCEND_COSTMODEL_DYNAMIC_CV_SEGMENT_DAG_MODEL", "0").strip().lower()
     dynamic_cv_enabled = dynamic_cv_mode not in {
         "",
         "0",
@@ -193,9 +198,7 @@ def make_costmodel_cache_key(ttir: str, extra_args: Optional[List[str]]) -> str:
         "false",
         "none",
     }
-    h.update(
-        b"dynamic_cv_segment_dag=" + (b"1" if dynamic_cv_enabled else b"0")
-    )
+    h.update(b"dynamic_cv_segment_dag=" + (b"1" if dynamic_cv_enabled else b"0"))
     h.update(b"|")
     h.update(b"inproc_costmodel_v2_loop_weighted")
     return h.hexdigest()
@@ -259,11 +262,8 @@ def parse_latency(stdout: str) -> float:
 def _format_compile_params(config_kwargs: Optional[Dict[str, object]]) -> str:
     if not config_kwargs:
         return ""
-    return ",".join(
-        f"{name}={config_kwargs[name]}"
-        for name in _COSTMODEL_COMPILE_PARAM_KEYS
-        if config_kwargs.get(name) is not None
-    )
+    return ",".join(f"{name}={config_kwargs[name]}" for name in _COSTMODEL_COMPILE_PARAM_KEYS
+                    if config_kwargs.get(name) is not None)
 
 
 def build_ascend_perf_model_arg(config_kwargs: Optional[Dict[str, object]] = None) -> str:
@@ -301,28 +301,33 @@ def _config_compile_params(config) -> Dict[str, object]:
     return params if isinstance(params, dict) else {}
 
 
+def _normalize_costmodel_compile_params(source: object) -> Dict[str, object]:
+    if not isinstance(source, dict):
+        return {}
+    normalized = dict(source)
+    for canonical_name, payload_name in _COSTMODEL_COMPILE_PARAM_ALIASES.items():
+        canonical_value = normalized.pop(canonical_name, None)
+        if canonical_value is not None:
+            normalized[payload_name] = canonical_value
+    return normalized
+
+
 def _extract_compile_params(item: dict) -> Dict[str, object]:
-    raw_params = dict(_config_compile_params(item.get("config")))
+    raw_params = _normalize_costmodel_compile_params(_config_compile_params(item.get("config")))
     # Compiler-final feature truth overrides requested config/runtime values;
     # explicit per-item compile_params remain the highest-priority validation
     # override.
     for source_name in (
-        "runtime_compile_params",
-        "compiler_metadata",
-        "metadata",
-        "compile_params",
+            "runtime_compile_params",
+            "compiler_metadata",
+            "metadata",
+            "compile_params",
     ):
         source_params = item.get(source_name)
         if isinstance(source_params, dict):
-            raw_params.update(source_params)
-    params = {
-        name: raw_params[name]
-        for name in _COSTMODEL_COMPILE_PARAM_KEYS
-        if raw_params.get(name) is not None
-    }
-    params.update(
-        _flatten_tilemix_transform_summary(item.get("tile_mix_transform_summary"))
-    )
+            raw_params.update(_normalize_costmodel_compile_params(source_params))
+    params = {name: raw_params[name] for name in _COSTMODEL_COMPILE_PARAM_KEYS if raw_params.get(name) is not None}
+    params.update(_flatten_tilemix_transform_summary(item.get("tile_mix_transform_summary")))
     return params
 
 
@@ -362,18 +367,14 @@ def _normalize_costmodel_items(config_ttir_items):
         if not ttir:
             costmodel_latencies[config] = float("inf")
             continue
-        pending_items.append(
-            (config, ttir, arg_bindings, hardware_config, compile_params)
-        )
+        pending_items.append((config, ttir, arg_bindings, hardware_config, compile_params))
 
     return pending_items, costmodel_latencies
 
 
 def _eval_one_costmodel_item(item):
     config, ttir, arg_bindings, hardware_config, compile_params = item
-    extra_args = _build_costmodel_extra_args(
-        arg_bindings, hardware_config, compile_params
-    )
+    extra_args = _build_costmodel_extra_args(arg_bindings, hardware_config, compile_params)
     cache_key = make_costmodel_cache_key(ttir, extra_args)
     cached = load_costmodel_latency(cache_key)
     if cached is not None:

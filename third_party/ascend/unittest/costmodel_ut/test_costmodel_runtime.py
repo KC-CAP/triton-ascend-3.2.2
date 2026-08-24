@@ -90,17 +90,13 @@ class CostmodelRuntimeTest(unittest.TestCase):
 
     def test_dynamic_cv_segment_dag_switch_partitions_costmodel_cache(self):
         with patch.dict(self.cm.os.environ, {}, clear=True):
-            legacy_key = self.cm.make_costmodel_cache_key(
-                "ttir", ["-ascend-perf-model"]
-            )
+            legacy_key = self.cm.make_costmodel_cache_key("ttir", ["-ascend-perf-model"])
         with patch.dict(
-            self.cm.os.environ,
+                self.cm.os.environ,
             {"ASCEND_COSTMODEL_DYNAMIC_CV_SEGMENT_DAG_MODEL": "1"},
-            clear=True,
+                clear=True,
         ):
-            segment_dag_key = self.cm.make_costmodel_cache_key(
-                "ttir", ["-ascend-perf-model"]
-            )
+            segment_dag_key = self.cm.make_costmodel_cache_key("ttir", ["-ascend-perf-model"])
 
         self.assertNotEqual(legacy_key, segment_dag_key)
 
@@ -245,9 +241,10 @@ class CostmodelRuntimeTest(unittest.TestCase):
             return real_import(name, globals, locals, fromlist, level)
 
         completed = Mock(stdout="Total Cycles: 321", stderr="")
-        with patch("builtins.__import__", fake_import), patch.object(
-            self.cm, "resolve_tritonsim_opt", return_value="/opt/tritonsim-opt"
-        ), patch.object(self.cm.subprocess, "run", return_value=completed) as run:
+        with patch("builtins.__import__", fake_import), patch.object(self.cm, "resolve_tritonsim_opt",
+                                                                     return_value="/opt/tritonsim-opt"), patch.object(
+                                                                         self.cm.subprocess, "run",
+                                                                         return_value=completed) as run:
             result = self.cm.run_costmodel("module-text", ["-ascend-perf-model"])
 
         self.assertEqual(result, "Total Cycles: 321")
@@ -257,12 +254,12 @@ class CostmodelRuntimeTest(unittest.TestCase):
         self.assertEqual(command[-1], "-")
 
     def test_feature_compile_params_bypass_inproc_bridge(self):
+
         class InprocMustNotRun:
+
             @staticmethod
             def run_costmodel_inproc(_mlir_text, _args):
-                raise AssertionError(
-                    "in-process bridge cannot consume TileMix/Multibuffer compile-params"
-                )
+                raise AssertionError("in-process bridge cannot consume TileMix/Multibuffer compile-params")
 
         fake_libtriton = types.SimpleNamespace(ascend=InprocMustNotRun)
         real_import = builtins.__import__
@@ -278,9 +275,9 @@ class CostmodelRuntimeTest(unittest.TestCase):
             "tile_mix_vector_loop=4,tile_mix_cube_loop=2"
         ]
         with patch("builtins.__import__", fake_import), patch.object(
-            self.cm,
-            "_run_costmodel_subprocess",
-            return_value="Total Cycles: 456",
+                self.cm,
+                "_run_costmodel_subprocess",
+                return_value="Total Cycles: 456",
         ) as fallback:
             result = self.cm.run_costmodel("module-text", extra_args)
 
@@ -313,7 +310,9 @@ class CostmodelRuntimeTest(unittest.TestCase):
             self.assertAlmostEqual(t, 1.23)
 
     def test_normalize_items_infers_feature_params_from_autotune_config(self):
+
         class Config:
+
             def all_kwargs(self):
                 return {
                     "set_workspace_multibuffer": 3,
@@ -323,9 +322,7 @@ class CostmodelRuntimeTest(unittest.TestCase):
                 }
 
         cfg = Config()
-        pending, latencies = self.cm._normalize_costmodel_items(
-            [{"config": cfg, "ttir": "ttir"}]
-        )
+        pending, latencies = self.cm._normalize_costmodel_items([{"config": cfg, "ttir": "ttir"}])
 
         self.assertEqual(latencies, {})
         self.assertEqual(
@@ -337,8 +334,50 @@ class CostmodelRuntimeTest(unittest.TestCase):
             },
         )
 
-    def test_compile_param_sources_have_explicit_override_precedence(self):
+    def test_dynamic_cv_cache_slot_names_are_normalized_for_costmodel(self):
+
         class Config:
+
+            def all_kwargs(self):
+                return {
+                    "buf_slot_num_of_veccore": 2,
+                    "buf_slot_num_of_crosscore": 3,
+                    "buf_slot_num_of_gm": 4,
+                }
+
+        params = self.cm._extract_compile_params({"config": Config()})
+
+        self.assertEqual(
+            params,
+            {
+                "intra_cache_num": 2,
+                "inter_cache_num": 3,
+                "load_cache_num": 4,
+            },
+        )
+
+    def test_dynamic_cv_cache_slot_aliases_preserve_source_precedence(self):
+
+        class Config:
+
+            def all_kwargs(self):
+                return {"buf_slot_num_of_veccore": 2}
+
+        params = self.cm._extract_compile_params({
+            "config": Config(),
+            "runtime_compile_params": {"intra_cache_num": 3},
+            "compile_params": {
+                "intra_cache_num": 5,
+                "buf_slot_num_of_veccore": 4,
+            },
+        })
+
+        self.assertEqual(params["intra_cache_num"], 4)
+
+    def test_compile_param_sources_have_explicit_override_precedence(self):
+
+        class Config:
+
             def all_kwargs(self):
                 return {
                     "set_workspace_multibuffer": 2,
@@ -346,19 +385,17 @@ class CostmodelRuntimeTest(unittest.TestCase):
                     "tile_mix_vector_loop": 2,
                 }
 
-        params = self.cm._extract_compile_params(
-            {
-                "config": Config(),
-                "runtime_compile_params": {
-                    "set_workspace_multibuffer": 3,
-                    "tile_mix_vector_loop": 4,
-                },
-                "compile_params": {
-                    "tile_mix_vector_loop": 5,
-                    "tile_mix_cube_loop": 6,
-                },
-            }
-        )
+        params = self.cm._extract_compile_params({
+            "config": Config(),
+            "runtime_compile_params": {
+                "set_workspace_multibuffer": 3,
+                "tile_mix_vector_loop": 4,
+            },
+            "compile_params": {
+                "tile_mix_vector_loop": 5,
+                "tile_mix_cube_loop": 6,
+            },
+        })
 
         self.assertEqual(
             params,
@@ -370,71 +407,61 @@ class CostmodelRuntimeTest(unittest.TestCase):
         )
 
     def test_dynamic_cv_compiler_final_status_is_forwarded(self):
-        params = self.cm._extract_compile_params(
-            {
-                "config": object(),
-                "compile_params": {
-                    "enable_dynamic_cv_pipeline": True,
-                    "dynamic_cv_applied": False,
-                    "dynamic_cv_skip_reason": "compiler_ignored",
-                    "dynamic_cv_status_source": "compiler_final",
-                },
-            }
-        )
+        params = self.cm._extract_compile_params({
+            "config": object(),
+            "compile_params": {
+                "enable_dynamic_cv_pipeline": True,
+                "dynamic_cv_applied": False,
+                "dynamic_cv_skip_reason": "compiler_ignored",
+                "dynamic_cv_status_source": "compiler_final",
+            },
+        })
 
         self.assertEqual(params["dynamic_cv_applied"], False)
-        self.assertEqual(
-            params["dynamic_cv_skip_reason"], "compiler_ignored"
-        )
+        self.assertEqual(params["dynamic_cv_skip_reason"], "compiler_ignored")
         self.assertEqual(params["dynamic_cv_status_source"], "compiler_final")
         model_arg = self.cm.build_ascend_perf_model_arg(params)
         self.assertIn("dynamic_cv_applied=False", model_arg)
         self.assertIn("dynamic_cv_skip_reason=compiler_ignored", model_arg)
 
     def test_dynamic_cv_status_accepts_packed_compiler_metadata(self):
-        params = self.cm._extract_compile_params(
-            {
-                "config": object(),
-                "compiler_metadata": {
-                    "dynamic_cv_applied": True,
-                    "dynamic_cv_skip_reason": "none",
-                    "dynamic_cv_status_source": "compiler_final",
-                },
-                "compile_params": {
-                    "dynamic_cv_applied": False,
-                    "dynamic_cv_skip_reason": "validation_override",
-                },
-            }
-        )
+        params = self.cm._extract_compile_params({
+            "config": object(),
+            "compiler_metadata": {
+                "dynamic_cv_applied": True,
+                "dynamic_cv_skip_reason": "none",
+                "dynamic_cv_status_source": "compiler_final",
+            },
+            "compile_params": {
+                "dynamic_cv_applied": False,
+                "dynamic_cv_skip_reason": "validation_override",
+            },
+        })
 
         self.assertFalse(params["dynamic_cv_applied"])
-        self.assertEqual(
-            params["dynamic_cv_skip_reason"], "validation_override"
-        )
+        self.assertEqual(params["dynamic_cv_skip_reason"], "validation_override")
         self.assertEqual(params["dynamic_cv_status_source"], "compiler_final")
 
     def test_optional_tilemix_pass_summary_is_flattened(self):
-        params = self.cm._extract_compile_params(
-            {
-                "config": object(),
-                "compile_params": {
-                    "tile_mix_cube_loop": 4,
-                    "tile_mix_vector_loop": 2,
-                },
-                "tile_mix_transform_summary": {
-                    "source": "tile_cube_vector_loop_ir_diff",
-                    "valid": True,
-                    "cube_applied": False,
-                    "vector_applied": True,
-                    "cube_segments": 1,
-                    "vector_segments": 2,
-                    "cube_skip_reason": "pass_rejected_suboptimal",
-                    "vector_skip_reason": "none",
-                    "sync_ops_before": 8,
-                    "sync_ops_after": 6,
-                },
-            }
-        )
+        params = self.cm._extract_compile_params({
+            "config": object(),
+            "compile_params": {
+                "tile_mix_cube_loop": 4,
+                "tile_mix_vector_loop": 2,
+            },
+            "tile_mix_transform_summary": {
+                "source": "tile_cube_vector_loop_ir_diff",
+                "valid": True,
+                "cube_applied": False,
+                "vector_applied": True,
+                "cube_segments": 1,
+                "vector_segments": 2,
+                "cube_skip_reason": "pass_rejected_suboptimal",
+                "vector_skip_reason": "none",
+                "sync_ops_before": 8,
+                "sync_ops_after": 6,
+            },
+        })
         self.assertEqual(params["tile_mix_summary_valid"], 1)
         self.assertEqual(params["tile_mix_vector_applied"], 1)
         self.assertEqual(params["tile_mix_cube_skip_reason"], "pass_rejected_suboptimal")
@@ -443,14 +470,12 @@ class CostmodelRuntimeTest(unittest.TestCase):
         self.assertIn("tile_mix_sync_ops_after=6", model_arg)
 
     def test_workspace_multibuffer_is_forwarded_to_ttir_model(self):
-        model_arg = self.cm.build_ascend_perf_model_arg(
-            {
-                "set_workspace_multibuffer": 4,
-                "tile_mix_cube_loop": 2,
-                "tile_mix_vector_loop": 4,
-                "BLOCK_M": 128,
-            }
-        )
+        model_arg = self.cm.build_ascend_perf_model_arg({
+            "set_workspace_multibuffer": 4,
+            "tile_mix_cube_loop": 2,
+            "tile_mix_vector_loop": 4,
+            "BLOCK_M": 128,
+        })
         self.assertIn("set_workspace_multibuffer=4", model_arg)
         self.assertIn("tile_mix_cube_loop=2", model_arg)
         self.assertNotIn("BLOCK_M", model_arg)
@@ -527,6 +552,7 @@ class CostmodelRuntimeTest(unittest.TestCase):
                 "_normalize_costmodel_items",
                 lambda _x: ([(cfg1, "t1", "", "", {})], {cfg2: float("inf")}),
         ):
+
             def fake_eval(_pending, out):
                 out[cfg1] = 0.88
 

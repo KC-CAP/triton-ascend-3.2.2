@@ -14,6 +14,7 @@ def load_module(name, filename):
 
 
 class TileMixPassSummaryTest(unittest.TestCase):
+
     @classmethod
     def setUpClass(cls):
         cls.summary = load_module("tilemix_pass_summary_under_test", "tilemix_pass_summary.py")
@@ -21,14 +22,11 @@ class TileMixPassSummaryTest(unittest.TestCase):
     def test_capture_is_optional(self):
         self.assertFalse(self.summary.should_capture_tilemix_pass_summary(4, 4, {}))
         self.assertTrue(
-            self.summary.should_capture_tilemix_pass_summary(
-                4, 4, {"TRITON_CAPTURE_TILE_MIX_PASS_SUMMARY": "1"}
-            )
-        )
+            self.summary.should_capture_tilemix_pass_summary(4, 4, {"TRITON_CAPTURE_TILE_MIX_PASS_SUMMARY": "1"}))
         options = []
-        self.assertTrue(self.summary.add_tilemix_pass_dump_options(options, 4, 2, env={
-            "TRITON_CAPTURE_TILE_MIX_PASS_SUMMARY": "true"
-        }))
+        self.assertTrue(
+            self.summary.add_tilemix_pass_dump_options(options, 4, 2,
+                                                       env={"TRITON_CAPTURE_TILE_MIX_PASS_SUMMARY": "true"}))
         self.assertEqual(len(options), 2)
 
     def test_real_pass_warning_and_ir_diff(self):
@@ -63,17 +61,15 @@ loc("kernel.py":1:1): warning: Ignoring candidate cube loop trip count because i
         self.assertEqual(result["vector_skip_reason"], "missing_pass_dump")
 
     def test_flatten_contract(self):
-        flat = self.summary.summary_to_compile_params(
-            {
-                "source": "pass",
-                "valid": True,
-                "cube_applied": False,
-                "vector_applied": True,
-                "vector_segments": 4,
-                "cube_skip_reason": "fits",
-                "vector_skip_reason": "none",
-            }
-        )
+        flat = self.summary.summary_to_compile_params({
+            "source": "pass",
+            "valid": True,
+            "cube_applied": False,
+            "vector_applied": True,
+            "vector_segments": 4,
+            "cube_skip_reason": "fits",
+            "vector_skip_reason": "none",
+        })
         self.assertEqual(flat["tile_mix_summary_valid"], 1)
         self.assertEqual(flat["tile_mix_vector_segments"], 4)
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Dict, Mapping, Optional
 
-
 _BEFORE_HEADER = re.compile(
     r"^\s*//\s*-+// IR Dump Before TileCubeVectorLoop \(tile-cube-vector-loop\) //-+\s*//\s*$",
     re.MULTILINE,
@@ -31,9 +30,8 @@ _SUMMARY_KEYS = (
 )
 
 
-def should_capture_tilemix_pass_summary(
-    cube_loop: Optional[int], vector_loop: Optional[int], env: Mapping[str, str]
-) -> bool:
+def should_capture_tilemix_pass_summary(cube_loop: Optional[int], vector_loop: Optional[int],
+                                        env: Mapping[str, str]) -> bool:
     """Return whether the compiler should capture TileCubeVectorLoop before/after IR."""
     # Primary costmodel pruning must stop at TTIR. Real HIVM evidence is an
     # explicit second-stage validation mode, so capture is disabled by default.
@@ -67,15 +65,13 @@ def _normalize_ir(text: str) -> str:
 
 def _sync_op_count(text: str) -> int:
     return sum(
-        text.count(token)
-        for token in (
+        text.count(token) for token in (
             "hivm.hir.sync_block_set",
             "hivm.hir.sync_block_wait",
             "hivm.hir.set_flag",
             "hivm.hir.wait_flag",
             "hivm.hir.pipe_barrier",
-        )
-    )
+        ))
 
 
 def _requested(value: Optional[int]) -> int:
@@ -85,9 +81,8 @@ def _requested(value: Optional[int]) -> int:
         return 1
 
 
-def parse_tilemix_pass_summary(
-    compiler_output: str, *, cube_loop: Optional[int], vector_loop: Optional[int]
-) -> Dict[str, object]:
+def parse_tilemix_pass_summary(compiler_output: str, *, cube_loop: Optional[int],
+                               vector_loop: Optional[int]) -> Dict[str, object]:
     """Build a fail-closed summary from the real TileCubeVectorLoop invocation.
 
     The proprietary pass currently exposes no callback metadata. Its supported
@@ -120,14 +115,15 @@ def parse_tilemix_pass_summary(
     if not before_match or not after_match or before_match.end() >= after_match.start():
         return result
 
-    before = compiler_output[before_match.end() : after_match.start()]
+    before = compiler_output[before_match.end():after_match.start()]
     # Compiler warnings and linker diagnostics follow the after dump. They are
     # not IR and must not make an unchanged pass look changed.
-    after_tail = compiler_output[after_match.end() :]
+    after_tail = compiler_output[after_match.end():]
     diagnostic_positions = [
-        pos for pos in (after_tail.find("\nloc("), after_tail.find("\nwarning:"), after_tail.find("\nld.lld:")) if pos >= 0
+        pos for pos in (after_tail.find("\nloc("), after_tail.find("\nwarning:"), after_tail.find("\nld.lld:"))
+        if pos >= 0
     ]
-    after = after_tail[: min(diagnostic_positions)] if diagnostic_positions else after_tail
+    after = after_tail[:min(diagnostic_positions)] if diagnostic_positions else after_tail
     changed = _normalize_ir(before) != _normalize_ir(after)
 
     warnings = {"cube": [], "vector": []}
@@ -150,20 +146,18 @@ def parse_tilemix_pass_summary(
 
     cube_applied, cube_segments, cube_reason = side_state("cube", cube_requested)
     vector_applied, vector_segments, vector_reason = side_state("vector", vector_requested)
-    result.update(
-        {
-            "valid": True,
-            "changed": changed,
-            "cube_applied": cube_applied,
-            "vector_applied": vector_applied,
-            "cube_segments": cube_segments,
-            "vector_segments": vector_segments,
-            "cube_skip_reason": cube_reason,
-            "vector_skip_reason": vector_reason,
-            "sync_ops_before": _sync_op_count(before),
-            "sync_ops_after": _sync_op_count(after),
-        }
-    )
+    result.update({
+        "valid": True,
+        "changed": changed,
+        "cube_applied": cube_applied,
+        "vector_applied": vector_applied,
+        "cube_segments": cube_segments,
+        "vector_segments": vector_segments,
+        "cube_skip_reason": cube_reason,
+        "vector_skip_reason": vector_reason,
+        "sync_ops_before": _sync_op_count(before),
+        "sync_ops_after": _sync_op_count(after),
+    })
     return result
 
 
