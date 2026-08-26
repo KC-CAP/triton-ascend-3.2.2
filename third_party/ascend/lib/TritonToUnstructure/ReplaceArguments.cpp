@@ -147,20 +147,10 @@ shouldPreserveScalarPointers(Operation *op, RewriterBase &rewriter,
                           whileOp.getBeforeArguments().end());
     boundaryValues.append(whileOp.getAfterArguments().begin(),
                           whileOp.getAfterArguments().end());
-    boundaryValues.append(whileOp->getResults().begin(),
-                          whileOp->getResults().end());
-    boundaryValues.append(whileOp.getConditionOp().getArgs().begin(),
-                          whileOp.getConditionOp().getArgs().end());
-    boundaryValues.append(whileOp.getYieldOp()->getOperands().begin(),
-                          whileOp.getYieldOp()->getOperands().end());
   } else if (auto loopOp = dyn_cast<LoopLikeOpInterface>(op)) {
     boundaryValues.append(loopOp.getInits().begin(), loopOp.getInits().end());
     boundaryValues.append(loopOp.getRegionIterArgs().begin(),
                           loopOp.getRegionIterArgs().end());
-    boundaryValues.append(loopOp->getResults().begin(),
-                          loopOp->getResults().end());
-    boundaryValues.append(loopOp.getYieldedValues().begin(),
-                          loopOp.getYieldedValues().end());
   } else if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
     boundaryValues.append(ifOp->getResults().begin(), ifOp->getResults().end());
     boundaryValues.append(ifOp.thenYield().getResults().begin(),
@@ -433,8 +423,13 @@ void convertTensorPtrPre(Operation *op, RewriterBase &rewriter,
   // are converted. Publishing after the first region would make parsing the
   // second region treat its still-pointer-typed argument as a base-less i64
   // offset and attempt to rebuild tt.addptr from a null source.
-  for (Value arg : scalarPointerOffsetArgs)
+  for (Value arg : scalarPointerOffsetArgs) {
     markScalarPointerOffsetSlot(arg);
+    // replaceArgs() may have cached the old pointer provenance before the
+    // marker was published. Drop only the marked region arguments so the
+    // subsequent body walk re-parses them as live scalar offset carriers.
+    offsetMap.erase(arg);
+  }
   LLVM_DEBUG({
     auto &os = llvm::dbgs();
     os << "[convertTensorPtr]: Preorder end\n" << *op << "\n";
@@ -561,13 +556,13 @@ void replacePtrArguments(triton::FuncOp funcOp,
                                                      forOp));
           });
     } else if (auto whileOp = dyn_cast<scf::WhileOp>(op)) {
-      // Keep ordinary While on the established relative-offset path.  Its
-      // before/after regions are analyzed again by convertTensorPtrPre after
-      // the clone, where the full boundary cache invalidation can observe the
-      // live backedge.  Complete i64 carriers are still selected for For and
-      // explicitly marked descriptor slots; applying the opaque fallback to
-      // every While here changes the two-region T2U contract before that
-      // reanalysis can run.
+      // Keep analyzable scalar pointers on the established relative-offset
+      // path. If any boundary edge has no stable base-plus-offset form, switch
+      // all scalar pointer edges atomically to complete i64 addresses so the
+      // before/after regions cannot acquire a mixed pointer/integer contract.
+      if (shouldPreserveScalarPointers(whileOp.getOperation(), rewriter,
+                                       offsetMap))
+        markOpaqueScalarPointerBoundary(whileOp.getOperation());
       SmallVector<Value> newInits = constructOperands(
           whileOp.getInits(), tempVar, mapping, rewriter, whileOp);
       newOp = rewriter.create<scf::WhileOp>(
